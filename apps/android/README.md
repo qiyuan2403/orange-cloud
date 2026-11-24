@@ -47,14 +47,22 @@ cd apps/android
 
 ## OAuth Client 注入
 
-`OAUTH_CLIENT_ID` 经 Gradle 注入到 `BuildConfig`：
+两个键并列注入 `BuildConfig`：
 
-- `play` 风味内置官方 Client ID——OAuth PKCE 下它是公开标识符而非机密，与 iOS `OAuthConfig.swift` 同值。
-- `oss` 风味默认空串。自编译者须在 `apps/android/local.properties` 填入自建的 Client ID：
+| 键 | Gradle 属性 / `local.properties` | 作用 |
+|---|---|---|
+| `OAUTH_CLIENT_ID` | `OAUTH_CLIENT_ID` | 授权端点校验的 client。空值 → 授权端点 302 `/oauth/error?error=invalid_client` |
+| `OAUTH_REDIRECT_URI` | `OAUTH_REDIRECT_URI` | 授权端点校验的回调地址。必须与 Cloudflare OAuth client 后台的 **Redirect URLs 逐字一致**，否则 302 `/oauth/error?error=invalid_request` |
+
+- `play` / `direct` 风味内置官方 Client ID（OAuth PKCE 下它是公开标识符而非机密，与 iOS `OAuthConfig.swift` 同值），回调走官方 `https://o-c.do/oauth/callback`。
+- `oss` 风味默认空串。自编译者须在 `apps/android/local.properties` 填入自建值：
   ```properties
   OAUTH_CLIENT_ID=你自建的_client_id
+  OAUTH_REDIRECT_URI=https://你的中转域名/oauth/callback
   ```
-  并部署自己的回调中转——官方 Client 与 `o-c.do` 中转不向第三方构建开放，详见根目录 [`CONTRIBUTING.md`](../../CONTRIBUTING.md)。
+  并部署自己的回调中转（`apps/web/src/app/oauth/callback/route.ts` 可原样复用，或任一同等实现：收 `code`/`state`，302 到 `orangecloud://oauth/callback`）。两个值都要登记进你自己创建的 Cloudflare OAuth client，官方 Client 与 `o-c.do` 中转不向第三方构建开放，详见根目录 [`CONTRIBUTING.md`](../../CONTRIBUTING.md)。
+
+两种配置错误在 App 内表现一致：浏览器落到 `https://dash.cloudflare.com/oauth/error?...`，该路径在 Dash 端是 Cloudflare 自己的错误页，不代表应用路由缺失。
 
 ## 架构
 

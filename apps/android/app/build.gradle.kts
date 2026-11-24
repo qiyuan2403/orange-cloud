@@ -21,6 +21,14 @@ fun oauthClientId(default: String): String =
         ?: providers.gradleProperty("OAUTH_CLIENT_ID").orNull
         ?: default
 
+// OAuth 授权端点登记的 redirect_uri。空串 = 代码内回退到官方 https://o-c.do/oauth/callback。
+// oss 自编译者指向自己部署的中转（apps/web 或任一同等实现），该地址必须同时写进 Cloudflare
+// OAuth client 的 Redirect URLs，否则授权端点直接 302 到 /oauth/error?error=invalid_request。
+fun oauthRedirectUri(default: String = ""): String =
+    localProps.getProperty("OAUTH_REDIRECT_URI")
+        ?: providers.gradleProperty("OAUTH_REDIRECT_URI").orNull
+        ?: default
+
 // FCM（推送）配置：官方 play/direct 构建从 local.properties / -P 注入；缺省空串 = 推送不初始化（优雅降级）。
 fun buildProp(key: String, default: String = ""): String =
     localProps.getProperty(key) ?: providers.gradleProperty(key).orNull ?: default
@@ -87,6 +95,7 @@ android {
             buildConfigField("boolean", "IS_OSS", "false")
             buildConfigField("boolean", "IS_DIRECT", "false")
             buildConfigField("String", "OAUTH_CLIENT_ID", "\"${oauthClientId(officialOAuthClientId)}\"")
+            buildConfigField("String", "OAUTH_REDIRECT_URI", "\"${oauthRedirectUri()}\"")
         }
         create("oss") {
             dimension = "distribution"
@@ -96,6 +105,7 @@ android {
             buildConfigField("boolean", "IS_DIRECT", "false")
             // oss 默认不带官方 Client；自编译者用 local.properties 填
             buildConfigField("String", "OAUTH_CLIENT_ID", "\"${oauthClientId("")}\"")
+            buildConfigField("String", "OAUTH_REDIRECT_URI", "\"${oauthRedirectUri()}\"")
             // oss 不带官方 FCM 配置（即便 local.properties 有也清空，避免官方推送凭证进开源构建）
             buildConfigField("String", "FCM_PROJECT_ID", "\"\"")
             buildConfigField("String", "FCM_APP_ID", "\"\"")
@@ -111,6 +121,7 @@ android {
             buildConfigField("boolean", "IS_OSS", "false")
             buildConfigField("boolean", "IS_DIRECT", "true")
             buildConfigField("String", "OAUTH_CLIENT_ID", "\"${oauthClientId(officialOAuthClientId)}\"")
+            buildConfigField("String", "OAUTH_REDIRECT_URI", "\"${oauthRedirectUri()}\"")
             // direct 不走 FCM（Firebase 只注册了 play 包名；FCM App ID 绑定包名，direct 用
             // play 的会不合规且国内环境 FCM 不可达）——清空即推送中心优雅降级，其余功能不受影响
             buildConfigField("String", "FCM_PROJECT_ID", "\"\"")

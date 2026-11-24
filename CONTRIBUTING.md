@@ -56,8 +56,12 @@ Native Kotlin + Jetpack Compose in [`apps/android/`](apps/android/README.md)
 3. **OAuth client**: the `play` flavor embeds the official client ID (a
    public PKCE identifier, same value as iOS). The `oss` flavor ships
    empty — set your own in `apps/android/local.properties`
-   (`OAUTH_CLIENT_ID=…`) and deploy your own callback relay; the
-   official client is not for third-party builds.
+   (`OAUTH_CLIENT_ID=…` and `OAUTH_REDIRECT_URI=…`) and deploy your own
+   callback relay; the official client is not for third-party builds.
+   Both values must be registered on your own Cloudflare OAuth client;
+   a blank client ID yields `error=invalid_client` and a mismatched
+   redirect URI yields `error=invalid_request`, both landing on
+   `dash.cloudflare.com/oauth/error`.
 
 See [`apps/android/README.md`](apps/android/README.md) for the full
 build matrix and architecture.

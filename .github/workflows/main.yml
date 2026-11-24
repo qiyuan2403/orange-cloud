@@ -45,19 +45,59 @@ jobs:
         run: |
           sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
+      # 还原发布签名密钥。缺 secret 时不报错，构建退化为未签名（与本地一致）。
+      # 密钥材料本身不入库：仓库只存 base64 与口令，见 keystore.properties 的四个键。
+      - name: Restore release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: apps/android
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not configured. Build will be UNSIGNED and cannot be installed over an existing app."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.jks
+          cat > keystore.properties <<EOF
+          storeFile=$PWD/release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
       # 编译解锁版 OSS APK
       - name: Build OSS release APK
         working-directory: apps/android
         env:
           OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          OAUTH_REDIRECT_URI: ${{ secrets.OAUTH_REDIRECT_URI }}
         run: |
           chmod +x ./gradlew
 
-          if [ -n "$OAUTH_CLIENT_ID" ]; then
-            ./gradlew --no-daemon :app:assembleOssRelease -POAUTH_CLIENT_ID="$OAUTH_CLIENT_ID"
+          # 两个值必须成对且与 Cloudflare OAuth client 后台登记的一致：client_id 为空 →
+          # 授权端点 302 /oauth/error?error=invalid_client；redirect_uri 不匹配 →
+          # 302 /oauth/error?error=invalid_request。两者在 App 里都表现为「路由 /oauth/error 不存在」。
+          echo "OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-<empty>}"
+          echo "OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-<default https://o-c.do/oauth/callback>}"
+
+          args=()
+          [ -n "$OAUTH_CLIENT_ID" ] && args+=("-POAUTH_CLIENT_ID=$OAUTH_CLIENT_ID")
+          [ -n "$OAUTH_REDIRECT_URI" ] && args+=("-POAUTH_REDIRECT_URI=$OAUTH_REDIRECT_URI")
+          ./gradlew --no-daemon :app:assembleOssRelease "${args[@]}"
+
+      # 校验产物：签名是否存在、证书指纹、以及是 release 还是 unsigned
+      - name: Verify APK signature
+        working-directory: apps/android
+        run: |
+          APK=$(ls app/build/outputs/apk/oss/release/*.apk | head -1)
+          echo "APK=$APK"
+          if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK"; then
+            echo "::notice::Signed APK ready: $APK"
           else
-            echo "::warning::OAUTH_CLIENT_ID is not configured. OAuth sign-in will not be configured."
-            ./gradlew --no-daemon :app:assembleOssRelease
+            echo "::error::APK is not signed. Set ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD."
+            exit 1
           fi
 
       # 上传 APK 构建产物
