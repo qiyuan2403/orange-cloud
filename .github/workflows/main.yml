@@ -1,0 +1,60 @@
+
+name: Android OSS Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/android/**"
+      - ".github/workflows/android-oss.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-oss-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unlocked OSS APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build OSS release APK
+        working-directory: apps/android
+        env:
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+        run: |
+          chmod +x ./gradlew
+          if [ -n "$OAUTH_CLIENT_ID" ]; then
+            ./gradlew --no-daemon :app:assembleOssRelease -POAUTH_CLIENT_ID="$OAUTH_CLIENT_ID"
+          else
+            echo "::warning::OAUTH_CLIENT_ID is not configured. OAuth sign-in will not be configured."
+            ./gradlew --no-daemon :app:assembleOssRelease
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrangeCloud-OSS-unlocked
+          path: apps/android/app/build/outputs/apk/oss/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
